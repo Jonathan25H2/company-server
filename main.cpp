@@ -1,34 +1,60 @@
 #include <iostream>
+#include <string>
 #include <thread>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 
-int main() {
-    std::cout << "\n========== WARNING ==========\n";
-    std::cout << "You are about to shut down this server.\n";
-    std::cout << "All users will be disconnected.\n";
-    std::cout << "Running services will stop.\n";
-    std::cout << "Active transfers may be interrupted.\n";
-    std::cout << "Unsaved data may be lost.\n";
-    std::cout << "=============================\n\n";
+int main(int argc, char* argv[]) {
+    std::string calledAs = argv[0];
 
-    for (int i = 5; i > 0; --i) {
+    bool isReboot = calledAs.find("reboot") != std::string::npos;
+    bool isShutdown = calledAs.find("shutdown") != std::string::npos;
+
+    if (!isReboot && !isShutdown) {
+        std::cout << "Run this program as shutdown or reboot.\n";
+        return 1;
+    }
+
+    std::string action = isReboot ? "reboot" : "shutdown";
+
+    std::cout << "\n=========================================\n";
+    std::cout << "               WARNING\n";
+    std::cout << "=========================================\n";
+    std::cout << "You are about to " << action << " this server.\n\n";
+    std::cout << "This may:\n";
+    std::cout << "- Disconnect all active users\n";
+    std::cout << "- Stop running services\n";
+    std::cout << "- Interrupt file transfers\n";
+    std::cout << "- Cause data loss if data is being written\n";
+    std::cout << "- Make the server temporarily unavailable\n";
+    std::cout << "=========================================\n\n";
+
+    for (int i = 5; i >= 1; --i) {
         std::cout << "Confirmation available in " << i << "...\n";
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    char answer;
-    std::cout << "\nContinue shutdown? (y/n): ";
-    std::cin >> answer;
+    char confirm;
 
-    if (answer == 'y' || answer == 'Y') {
-        std::cout << "Shutting down...\n";
+    std::cout << "\nContinue with " << action << "? (y/n): ";
+    std::cin >> confirm;
 
-        // IMPORTANT: call the real shutdown command by absolute path
-        system("/usr/sbin/shutdown -h now");
+    if (confirm != 'y' && confirm != 'Y') {
+        std::cout << "\n" << action << " cancelled.\n";
+        return 0;
     }
-    else {
-        std::cout << "Shutdown cancelled.\n";
+
+    if (isReboot) {
+        std::cout << "\nRebooting server...\n";
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        system("/usr/bin/systemctl reboot");
+    } else {
+        std::cout << "\nShutting down server...\n";
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        system("/usr/bin/systemctl poweroff");
     }
 
     return 0;
