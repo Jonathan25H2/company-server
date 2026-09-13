@@ -7,20 +7,59 @@ CYAN="\033[1;36m"
 BOLD="\033[1m"
 RESET="\033[0m"
 
-pause() {
+DISK_CACHE=""
+LAST_DISK_UPDATE=0
+
+pause_menu() {
     echo
     read -p "Press ENTER to return..."
 }
 
+get_disk() {
+    local now
+    now=$(date +%s)
+
+    if [ -z "$DISK_CACHE" ] || [ $((now - LAST_DISK_UPDATE)) -ge 120 ]; then
+        DISK_CACHE=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}')
+        LAST_DISK_UPDATE=$now
+    fi
+}
+
+get_cpu_usage() {
+    read -r cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+
+    local idle1=$((idle + iowait))
+    local nonidle1=$((user + nice + system + irq + softirq + steal))
+    local total1=$((idle1 + nonidle1))
+
+    sleep 0.2
+
+    read -r cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+
+    local idle2=$((idle + iowait))
+    local nonidle2=$((user + nice + system + irq + softirq + steal))
+    local total2=$((idle2 + nonidle2))
+
+    local totald=$((total2 - total1))
+    local idled=$((idle2 - idle1))
+
+    if [ "$totald" -gt 0 ]; then
+        awk "BEGIN {printf \"%.1f%%\", (($totald-$idled)/$totald)*100}"
+    else
+        echo "0.0%"
+    fi
+}
+
 while true; do
-    clear
+
+    get_disk
 
     HOST=$(hostname)
     IP=$(hostname -I | awk '{print $1}')
     UPTIME=$(uptime -p | sed 's/up //')
+
     RAM=$(free -h | awk '/Mem:/ {print $3 " / " $2}')
-    DISK=$(df -h / | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}')
-    LOAD=$(awk '{print $1}' /proc/loadavg)
+    CPU=$(get_cpu_usage)
 
     if ping -c 1 -W 1 1.1.1.1 >/dev/null 2>&1; then
         NETWORK="${GREEN}✓ Connected${RESET}"
@@ -36,6 +75,8 @@ while true; do
         HEALTH="${RED}⚠ $FAILED FAILED SERVICE(S)${RESET}"
     fi
 
+    clear
+
     echo -e "${CYAN}====================================================${RESET}"
     echo -e "${BOLD}                    SLAN SERVER${RESET}"
     echo -e "${CYAN}====================================================${RESET}"
@@ -46,9 +87,9 @@ while true; do
     echo -e " IP Address:      $IP"
     echo -e " Uptime:          $UPTIME"
     echo
-    echo -e " CPU Load:        $LOAD"
+    echo -e " CPU Usage:       $CPU"
     echo -e " Memory:          $RAM"
-    echo -e " Storage:         $DISK"
+    echo -e " Storage:         $DISK_CACHE"
     echo -e " Network:         $NETWORK"
     echo
     echo "----------------------------------------------------"
@@ -63,8 +104,16 @@ while true; do
     echo "  0) Power"
     echo "----------------------------------------------------"
     echo
+    echo -n " Select option: "
 
-    read -p " Select option: " choice
+    read -t 2 -n 1 choice
+
+    if [ $? -ne 0 ]; then
+        continue
+    fi
+
+    echo
+    echo
 
     case "$choice" in
 
@@ -72,12 +121,18 @@ while true; do
             clear
             echo "=== SYSTEM DASHBOARD ==="
             echo
+            echo "Hostname: $HOST"
+            echo "IP:       $IP"
+            echo "Uptime:   $UPTIME"
+            echo
+            echo "CPU:      $CPU"
+            echo "Memory:   $RAM"
+            echo "Storage:  $DISK_CACHE"
+            echo
             uptime
             echo
             free -h
-            echo
-            df -h /
-            pause
+            pause_menu
             ;;
 
         2)
@@ -87,7 +142,7 @@ while true; do
             lsblk
             echo
             df -h
-            pause
+            pause_menu
             ;;
 
         3)
@@ -95,7 +150,7 @@ while true; do
             echo "=== USERS ==="
             echo
             awk -F: '$3 >= 1000 {print $1}' /etc/passwd
-            pause
+            pause_menu
             ;;
 
         4)
@@ -105,15 +160,15 @@ while true; do
             ip -br addr
             echo
             ip route
-            pause
+            pause_menu
             ;;
 
         5)
             clear
-            echo "=== FAILED SERVICES ==="
+            echo "=== SERVICES ==="
             echo
             systemctl --failed
-            pause
+            pause_menu
             ;;
 
         6)
@@ -121,7 +176,7 @@ while true; do
             echo "=== BACKUP ==="
             echo
             echo "Backup system not configured yet."
-            pause
+            pause_menu
             ;;
 
         7)
@@ -130,12 +185,13 @@ while true; do
             echo
             apt update
             apt upgrade
-            pause
+            pause_menu
             ;;
 
         8)
             clear
-            echo -e "${YELLOW}ADVANCED MODE${RESET}"
+            echo -e "${YELLOW}=== ADVANCED TERMINAL ===${RESET}"
+            echo
             echo "Type 'exit' to return to SLAN."
             echo
             bash
@@ -143,7 +199,7 @@ while true; do
 
         0)
             clear
-            echo "=== POWER ==="
+            echo "=== POWER MENU ==="
             echo
             echo " 1) Restart server"
             echo " 2) Shutdown server"
@@ -153,15 +209,18 @@ while true; do
 
             case "$power" in
                 1)
-                    echo "Restarting..."
+                    echo "Restarting server..."
                     reboot
                     ;;
                 2)
-                    echo "Shutting down..."
+                    echo "Shutting down server..."
                     poweroff
+                    ;;
+                0)
                     ;;
             esac
             ;;
 
     esac
+
 done
